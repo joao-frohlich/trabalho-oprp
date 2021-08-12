@@ -1,9 +1,9 @@
-GCC=g++
-GFLAGS=-O2 -std=c++17
+GCC=cc
+GFLAGS=-O2 -lm
 PROG=main
 
-all: main.cpp
-	$(GCC) main.cpp -o $(PROG) $(GFLAGS)
+all: main.c
+	$(GCC) main.c -o $(PROG) $(GFLAGS)
 
 run:
 	./$(PROG)
