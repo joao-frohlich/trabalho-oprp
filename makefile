@@ -1,9 +1,15 @@
 GCC=cc
-GFLAGS=-O2 -lm
+GFLAGS=-O3 -lm
 PROG=main
 
-all: main.c setup
+all: sequential openmp setup
 	$(GCC) main.c -o $(PROG) $(GFLAGS)
+
+sequential:
+	$(GCC) main.c -o $(PROG) $(GFLAGS)
+
+openmp:
+	$(GCC) main_openmp.c -o $(PROG)_openmp $(GFLAGS) -fopenmp
 
 setup:
 	mkdir -p saidas
