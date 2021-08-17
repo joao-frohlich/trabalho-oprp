@@ -1,4 +1,5 @@
 #include <math.h>
+#include <omp.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -7,6 +8,8 @@
 
 double v[10000007];
 double aux[10000007];
+
+int n_threads;
 
 void swap(double *a, double *b) {
     double t = *a;
@@ -27,7 +30,14 @@ int divide(double arr[], int low, int high) {
 void quicksort(double arr[], int low, int high) {
     if (low < high) {
         int pivot = divide(arr, low, high);
+// Referência: 6.2.1.1 Parallel Task
+// Paralelismo de tarefas utilizando OpenMP - Bianchini, Valoboas, Castro
+#pragma omp task final((pivot - low) < n_threads) mergeable default(none) \
+    shared(arr) firstprivate(low, pivot)
         quicksort(arr, low, pivot - 1);
+
+#pragma omp task final((high - pivot) < n_threads) mergeable default(none) \
+    shared(arr) firstprivate(high, pivot)
         quicksort(arr, pivot + 1, high);
     }
 }
@@ -56,12 +66,16 @@ int read_file(double *vetor, const char *filename) {
 
 int main(int const argc, char const *argv[]) {
     const char *filename = argc > 1 ? argv[1] : "1000000.txt";
+    n_threads = (argc > 2) ? atoi(argv[2]) : 4;
+    omp_set_num_threads(n_threads);
     int n = read_file(v, filename);
 
     // Começando a medição do tempo
-    double start_time = wtime();
-    quicksort(v, 0, n - 1);
+    double start_time = omp_get_wtime();
 
+#pragma omp parallel
+#pragma omp single
+    quicksort(v, 0, n - 1);
     double ma = v[0], dp, mg = v[0], md, p95, minimo = v[0], maximo = v[n - 1];
     for (int i = 1; i < n; i++) {
         double x = v[i];
@@ -78,7 +92,7 @@ int main(int const argc, char const *argv[]) {
     }
     dp = sqrt(aux_dp);
 
-    double end_time = wtime();
+    double end_time = omp_get_wtime();
 
     FILE *filep;
     char filename_out[1000];
