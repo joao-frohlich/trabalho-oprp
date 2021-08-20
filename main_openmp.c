@@ -55,6 +55,7 @@ int open_file(int idx, char *files[]) {
     } else {
         while ((fscanf(filep, "%lf", &vetor[index++])) != EOF) {
         }
+        // ./main_openmp `< in`
     }
     fclose(filep);
     return index - 1;
