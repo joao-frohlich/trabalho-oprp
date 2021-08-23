@@ -7,7 +7,8 @@
 #define MIN(a, b) (((a) < (b)) ? (a) : (b))
 #define MAX(a, b) (((a) > (b)) ? (a) : (b))
 
-double vetor[100000008];
+double vetor[16777216];
+double vetor_log[16777216];
 int n_threads;
 
 void swap(double *a, double *b) {
@@ -51,10 +52,67 @@ int open_file(int idx, char *files[]) {
         exit(1);
     } else {
         while ((fscanf(filep, "%lf", &vetor[index++])) != EOF) {
+            vetor_log[index - 1] = log(vetor[index - 1]);
         }
     }
     fclose(filep);
     return index - 1;
+}
+
+// cuda sum
+static const int blockSize = 1024;
+static const int gridSize = 24;
+
+__device__ double sum_warp(volatile double *shArr) {
+    int idx = threadIdx.x % warpSize;  // quantidade de wrap permitido pela GPU
+    if (idx < 16) {
+        shArr[idx] += shArr[idx + 16];
+        shArr[idx] += shArr[idx + 8];
+        shArr[idx] += shArr[idx + 4];
+        shArr[idx] += shArr[idx + 2];
+        shArr[idx] += shArr[idx + 1];
+    }
+    return shArr[0];
+}
+
+__global__ void sum_reduction(const double *a, const double arraySize,
+                              double *out) {
+    int idx = threadIdx.x;  // idx do bloco
+    double sum = 0;
+#pragma omp parallel for reduction(+ : sum)
+    for (int i = idx; i < arraySize; i += blockSize) sum += a[i];
+    __shared__ double r[blockSize];
+    r[idx] = sum;
+    sum_warp(&r[idx & ~(warpSize - 1)]);  // soma dos valores do bloco
+    __syncthreads();                      // barreira
+    if (idx < warpSize) {
+        r[idx] = idx * warpSize < blockSize ? r[idx * warpSize]
+                                            : 0;  // lidando com overflow
+        sum_warp(r);                              // computando bloco do inicio
+        if (idx == 0) *out = r[0];  // salvando na posicao 0 a soma
+    }
+}
+
+__host__ double sumArray(double *arr, int size) {
+    double *dev_arr;
+    cudaMalloc((void **)&dev_arr, size * sizeof(double));
+    cudaMemcpy(dev_arr, arr, size * sizeof(double), cudaMemcpyHostToDevice);
+
+    double out;
+    double *dev_out;
+    cudaMalloc((void **)&dev_out, sizeof(double) * gridSize);
+
+    int *dev_lastBlockCounter;
+    cudaMalloc((void **)&dev_lastBlockCounter, sizeof(int));
+    cudaMemset(dev_lastBlockCounter, 0, sizeof(int));
+
+    sum_reduction<<<gridSize, blockSize>>>(dev_arr, size, dev_out);
+    cudaDeviceSynchronize();  // barreira
+
+    cudaMemcpy(&out, dev_out, sizeof(double), cudaMemcpyDeviceToHost);
+    cudaFree(dev_arr);
+    cudaFree(dev_out);
+    return out;
 }
 
 void solve(int idx, char *files[], int size) {
@@ -63,19 +121,11 @@ void solve(int idx, char *files[], int size) {
 #pragma omp single
     quicksort(vetor, 0, size - 1);
     // ===============
+
     // aritmetical and geometric mean
     double ma = 0, mg = 0;
-    int i;
-
-#pragma omp parallel for reduction(+ : ma, mg) schedule(dynamic) \
-    private(i) shared(vetor, size)
-    for (i = 0; i < size; i++) {
-        double x = vetor[i];
-        ma += x;
-        mg += log(x);
-    }
-    ma /= size;
-    mg /= size;
+    ma = sumArray(vetor, size) / (double)size;
+    mg = sumArray(vetor_log, size) / (double)size;
     mg = exp(mg);
     // ===============
 
@@ -87,13 +137,14 @@ void solve(int idx, char *files[], int size) {
     // ===============
 
     double aux_dp = 0.0;
+    int i;
 #pragma omp parallel for reduction(+ : aux_dp) schedule(dynamic) \
     private(i) shared(vetor, size)
-    for (int i = 0; i < size; i++) {
+    for (i = 0; i < size; i++) {
         double aux_x = vetor[i] - ma;
         aux_dp += (aux_x * aux_x);
     }
-    double dp = sqrt(aux_dp / (double)size);
+    double dp = sqrt(aux_dp / size);
 
     FILE *filep;
     filep = fopen("saidas/results", "a");

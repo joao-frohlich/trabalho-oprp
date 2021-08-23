@@ -1,19 +1,25 @@
 #include <math.h>
-#include <omp.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/time.h>
+#include <unistd.h>
 
 #define MIN(a, b) (((a) < (b)) ? (a) : (b))
 #define MAX(a, b) (((a) > (b)) ? (a) : (b))
 
 double vetor[100000008];
-int n_threads;
 
 void swap(double *a, double *b) {
     double t = *a;
     *a = *b;
     *b = t;
+}
+
+double wtime() {
+    struct timeval t;
+    gettimeofday(&t, NULL);
+    return t.tv_sec + t.tv_usec / 1000000.0;
 }
 
 int divide(double arr[], int low, int high) {
@@ -29,12 +35,7 @@ int divide(double arr[], int low, int high) {
 void quicksort(double arr[], int low, int high) {
     if (low < high) {
         int pivot = divide(arr, low, high);
-#pragma omp task final((pivot - low) < n_threads) mergeable default(none) \
-    shared(arr) firstprivate(low, pivot)
         quicksort(arr, low, pivot - 1);
-
-#pragma omp task final((high - pivot) < n_threads) mergeable default(none) \
-    shared(arr) firstprivate(high, pivot)
         quicksort(arr, pivot + 1, high);
     }
 }
@@ -59,24 +60,18 @@ int open_file(int idx, char *files[]) {
 
 void solve(int idx, char *files[], int size) {
     // sorting
-#pragma omp parallel
-#pragma omp single
     quicksort(vetor, 0, size - 1);
     // ===============
     // aritmetical and geometric mean
-    double ma = 0, mg = 0;
+    double ma = 0, mg = 1;
     int i;
 
-#pragma omp parallel for reduction(+ : ma, mg) schedule(dynamic) \
-    private(i) shared(vetor, size)
     for (i = 0; i < size; i++) {
         double x = vetor[i];
         ma += x;
-        mg += log(x);
+        mg *= pow(x, 1.0 / size);
     }
     ma /= size;
-    mg /= size;
-    mg = exp(mg);
     // ===============
 
     // positional values
@@ -87,8 +82,6 @@ void solve(int idx, char *files[], int size) {
     // ===============
 
     double aux_dp = 0.0;
-#pragma omp parallel for reduction(+ : aux_dp) schedule(dynamic) \
-    private(i) shared(vetor, size)
     for (int i = 0; i < size; i++) {
         double aux_x = vetor[i] - ma;
         aux_dp += (aux_x * aux_x);
@@ -105,20 +98,16 @@ void solve(int idx, char *files[], int size) {
 int main(int argc, char *argv[]) {
     int i, n;
 
-    n_threads = omp_get_max_threads();
-    omp_set_num_threads(n_threads);
-
-    double start_time_total = omp_get_wtime();
-
+    double start_time_total = wtime();
     for (i = 1; i < argc; i++) {
         n = open_file(i, argv);
-        double start_time = omp_get_wtime();
+        double start_time = wtime();
         solve(i, argv, n);
-        double end_time = omp_get_wtime();
+        double end_time = wtime();
         printf("%s - tempo: %.6lfs\n", argv[i], end_time - start_time);
     }
 
-    double end_time_total = omp_get_wtime();
+    double end_time_total = wtime();
 
     printf("Tempo total: %.6lfs\n", end_time_total - start_time_total);
 

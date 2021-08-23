@@ -25,7 +25,5 @@ Será criado uma pasta de nome `saidas`, onde os dados calculados serão armazen
 Para testar, abasteca a pasta `entradas` com os arquivos casos de teste e execute com o seguinte comando
 
 ```bash
-./main `< in`
+./main_cuda `< in`
 ```
-
-> Sendo N o tamanho da base de testes
